@@ -56,7 +56,7 @@ window.addEventListener('DOMContentLoaded', () => {
   const targetKeys = eligibleScores.filter(item => {
     const physScore = parseFloat(item['負担スコア(物理)']);
     const pressCount = parseInt(item.押下回数, 10);
-    return !isNaN(physScore) && physScore >= 0.75 && !isNaN(pressCount) && pressCount > 0;
+    return !isNaN(physScore) && physScore >= 0 && !isNaN(pressCount) && pressCount > 0;
   }).sort((a, b) => b.押下回数 - a.押下回数);
 
   const usedCandidates = new Set();
