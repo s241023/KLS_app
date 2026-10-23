@@ -43,7 +43,9 @@ const HAND_LABELS = { right: '右手のみ', left: '左手のみ', 'r&l': '両�
 const SCORE_COLUMNS = ['キー', '負担スコア(物理)', '使用頻度F(k)', '総合影響度', '指負担P(k)', '距離/最大距離', '押下回数', '担当指'];
 
 // 入れ替え不可のキー(数字キー + Space)。文字列でもキーオブジェクトでも渡せる
-const EXCLUDED_KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 'Space', 'space'];
+const EXCLUDED_KEYS = ['Space', 'space'];
+//数字を入れ替えない場合は下の部分を'Space'の前にコピペしてね
+//'1', '2', '3', '4', '5', '6', '7', '8', '9', '0', 
 const isExcludedKey = (k) => k.isSpace === true || EXCLUDED_KEYS.includes(String(k.name ?? k).trim());
 
 // localStorage の読み書き(壊れたデータでも画面が止まらない)

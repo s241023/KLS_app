@@ -12,19 +12,52 @@ window.addEventListener('DOMContentLoaded', () => {
   // 標準QWERTYレイアウト構造（初期配置定義）
   const DEFAULT_KEYBOARD_ROWS = DEFAULT_ROWS; // common.js の共通定義
 
-  // 「提案前（解析・計算時）」の最新キー配列を構築
-  const KEYBOARD_ROWS = applySwapMap(DEFAULT_KEYBOARD_ROWS, loadJSON(STORAGE.latest, null)?.swapMap);
+  // JISかな入力で各キーに対応する文字（common.js は変更せず、このページの表示にのみ使用）
+  const KANA_LABELS = {
+    '1': 'ぬ', '2': 'ふ', '3': 'あ', '4': 'う', '5': 'え',
+    '6': 'お', '7': 'や', '8': 'ゆ', '9': 'よ', '0': 'わ',
+    '-': 'ほ', '^': 'へ', '¥': 'ー',
+    'Q': 'た', 'W': 'て', 'E': 'い', 'R': 'す', 'T': 'か',
+    'Y': 'ん', 'U': 'な', 'I': 'に', 'O': 'ら', 'P': 'せ',
+    '@': '゛', '[': '゜',
+    'A': 'ち', 'S': 'と', 'D': 'し', 'F': 'は', 'G': 'き',
+    'H': 'く', 'J': 'ま', 'K': 'の', 'L': 'り', ';': 'れ',
+    ':': 'け', ']': 'む',
+    'Z': 'つ', 'X': 'さ', 'C': 'そ', 'V': 'ひ', 'B': 'こ',
+    'N': 'み', 'M': 'も', ',': 'ね', '.': 'る', '/': 'め',
+    '\\': 'ろ'
+  };
 
+  let previewMode = 'latin';
+
+  function getPreviewLabel(keyName) {
+    if (previewMode !== 'kana') return keyName;
+
+    const normalizedName = String(keyName).length === 1
+      ? String(keyName).toUpperCase()
+      : String(keyName);
+
+    return KANA_LABELS[normalizedName] ?? keyName;
+  }
+
+  // 「提案前（解析・計算時）」の最新キー配列を構築
+  const KEYBOARD_ROWS = applySwapMap(
+    DEFAULT_KEYBOARD_ROWS,
+    loadJSON(STORAGE.latest, null)?.swapMap
+  );
 
   // 2. 設定情報の簡易表示
   const displayHands = document.getElementById('user-hands');
   const displayCoordsCount = document.getElementById('user-coords-count');
-  
+
   if (displayHands) {
     displayHands.textContent = HAND_LABELS[settings.usehands] ?? '未設定';
   }
+
   if (displayCoordsCount) {
-    displayCoordsCount.textContent = settings.homeCoords ? `${settings.homeCoords.length} 箇所` : '0';
+    displayCoordsCount.textContent = settings.homeCoords
+      ? `${settings.homeCoords.length} 箇所`
+      : '0';
   }
 
   // 3. Min-Max 正規化用データの計算（除外キー以外で算出）
@@ -36,10 +69,12 @@ window.addEventListener('DOMContentLoaded', () => {
   eligibleScores.forEach(item => {
     const cost = parseFloat(item['負担スコア(物理)']);
     const freq = parseFloat(item['使用頻度F(k)']);
+
     if (!isNaN(cost)) {
       if (cost < minCost) minCost = cost;
       if (cost > maxCost) maxCost = cost;
     }
+
     if (!isNaN(freq)) {
       if (freq < minFreq) minFreq = freq;
       if (freq > maxFreq) maxFreq = freq;
@@ -47,8 +82,14 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   function calculateSmallnessScore(cost, freq) {
-    const normCost = maxCost > minCost ? (cost - minCost) / (maxCost - minCost) : 0;
-    const normFreq = maxFreq > minFreq ? (freq - minFreq) / (maxFreq - minFreq) : 0;
+    const normCost = maxCost > minCost
+      ? (cost - minCost) / (maxCost - minCost)
+      : 0;
+
+    const normFreq = maxFreq > minFreq
+      ? (freq - minFreq) / (maxFreq - minFreq)
+      : 0;
+
     return Math.sqrt(normCost * normCost + normFreq * normFreq);
   }
 
@@ -56,11 +97,17 @@ window.addEventListener('DOMContentLoaded', () => {
   const targetKeys = eligibleScores.filter(item => {
     const physScore = parseFloat(item['負担スコア(物理)']);
     const pressCount = parseInt(item.押下回数, 10);
-    return !isNaN(physScore) && physScore >= 0 && !isNaN(pressCount) && pressCount > 0;
+
+    return !isNaN(physScore) &&
+      physScore >= 0 &&
+      !isNaN(pressCount) &&
+      pressCount > 0;
   }).sort((a, b) => b.押下回数 - a.押下回数);
 
   const usedCandidates = new Set();
-  const proposedSwapMap = {}; // 今回の改善提案による入れ替え { '提案前キー': '提案後キー' }
+
+  // 今回の改善提案による入れ替え { '提案前キー': '提案後キー' }
+  const proposedSwapMap = {};
 
   // 5. マッチング処理とテーブルHTML生成
   const tbody = document.getElementById('suggestion-tbody');
@@ -71,15 +118,27 @@ window.addEventListener('DOMContentLoaded', () => {
     const targetFreq = parseFloat(target['使用頻度F(k)']);
 
     const validCandidates = eligibleScores.filter(item => {
-      if (usedCandidates.has(item.キー) || item.キー === target.キー) return false;
+      if (usedCandidates.has(item.キー) || item.キー === target.キー) {
+        return false;
+      }
+
       const cCost = parseFloat(item['負担スコア(物理)']);
       const cFreq = parseFloat(item['使用頻度F(k)']);
+
       return cCost < targetCost && cFreq < targetFreq;
     });
 
     validCandidates.sort((a, b) => {
-      const scoreA = calculateSmallnessScore(parseFloat(a['負担スコア(物理)']), parseFloat(a['使用頻度F(k)']));
-      const scoreB = calculateSmallnessScore(parseFloat(b['負担スコア(物理)']), parseFloat(b['使用頻度F(k)']));
+      const scoreA = calculateSmallnessScore(
+        parseFloat(a['負担スコア(物理)']),
+        parseFloat(a['使用頻度F(k)'])
+      );
+
+      const scoreB = calculateSmallnessScore(
+        parseFloat(b['負担スコア(物理)']),
+        parseFloat(b['使用頻度F(k)'])
+      );
+
       return scoreA - scoreB;
     });
 
@@ -111,6 +170,7 @@ window.addEventListener('DOMContentLoaded', () => {
         <td colspan="3" class="no-candidate">条件に合致する交換先なし</td>
       `;
     }
+
     tbody.appendChild(tr);
   });
 
@@ -126,7 +186,10 @@ window.addEventListener('DOMContentLoaded', () => {
       row.forEach(keyObj => {
         const keyDiv = document.createElement('div');
         keyDiv.className = 'preview-key';
-        if (keyObj.isSpace) keyDiv.classList.add('space-key');
+
+        if (keyObj.isSpace) {
+          keyDiv.classList.add('space-key');
+        }
 
         const originalName = keyObj.name; // 提案前（計算時）のキー名
         const newKey = proposedSwapMap[originalName]; // 提案後のキー名
@@ -134,12 +197,13 @@ window.addEventListener('DOMContentLoaded', () => {
         if (newKey) {
           // 入れ替えが発生したキーを一律ハイライト
           keyDiv.classList.add('swapped-key');
+
           keyDiv.innerHTML = `
-            <span>${newKey}</span>
-            <span class="original-label">(元:${originalName})</span>
+            <span>${getPreviewLabel(newKey)}</span>
+            <span class="original-label">(元:${getPreviewLabel(originalName)})</span>
           `;
         } else {
-          keyDiv.textContent = originalName;
+          keyDiv.textContent = getPreviewLabel(originalName);
         }
 
         rowDiv.appendChild(keyDiv);
@@ -151,10 +215,33 @@ window.addEventListener('DOMContentLoaded', () => {
 
   renderKeyboardPreview();
 
+  // 英字表示／かな表示の切り替え（キー配列や保存データには影響しない）
+  const showLatinBtn = document.getElementById('showLatinBtn');
+  const showKanaBtn = document.getElementById('showKanaBtn');
+
+  function setPreviewMode(mode) {
+    previewMode = mode;
+
+    showLatinBtn.classList.toggle('btn-primary', mode === 'latin');
+    showLatinBtn.classList.toggle('btn-secondary', mode !== 'latin');
+    showLatinBtn.setAttribute('aria-pressed', String(mode === 'latin'));
+
+    showKanaBtn.classList.toggle('btn-primary', mode === 'kana');
+    showKanaBtn.classList.toggle('btn-secondary', mode !== 'kana');
+    showKanaBtn.setAttribute('aria-pressed', String(mode === 'kana'));
+
+    renderKeyboardPreview();
+  }
+
+  showLatinBtn.addEventListener('click', () => setPreviewMode('latin'));
+  showKanaBtn.addEventListener('click', () => setPreviewMode('kana'));
+
   // 7. 隠しコマンド("score")で詳細テーブルを表示
   onSecretCommand('score', () => {
     const area = document.getElementById('suggestion-area');
+
     if (!area) return;
+
     area.style.display = 'block';
     area.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
@@ -173,9 +260,13 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // 提案前の配置に今回の提案を適用し、標準QWERTYとの差分(累計swapMap)を保存する
     const finalKeyboard = JSON.parse(JSON.stringify(KEYBOARD_ROWS));
+
     finalKeyboard.forEach(row => row.forEach(keyObj => {
-      if (!keyObj.isSpace && proposedSwapMap[keyObj.name]) keyObj.name = proposedSwapMap[keyObj.name];
+      if (!keyObj.isSpace && proposedSwapMap[keyObj.name]) {
+        keyObj.name = proposedSwapMap[keyObj.name];
+      }
     }));
+
     commitLayout(buildSwapMap(finalKeyboard)); // 履歴退避・最新更新・スコア無効化
 
     // 4. ボタンの見た目を変更してフィードバック
@@ -183,8 +274,7 @@ window.addEventListener('DOMContentLoaded', () => {
     btn.textContent = '✅ 最新配列として保存！';
     btn.classList.replace('btn-success', 'btn-secondary');
     btn.disabled = true; // 連続クリック防止
-    
+
     alert('最新の配列として保存し、古い配列は履歴に移動しました！');
   });
-
 });
